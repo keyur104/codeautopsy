@@ -12,32 +12,32 @@ A multi-agent pipeline + MCP server that automatically correlates logs, deployme
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Browser (SSE)                         │
+│                    Browser (SSE)                        │
 │            frontend/index.html                          │
 └───────────────────────┬────────────────────────────────-┘
                         │ POST /analyze (SSE stream)
 ┌───────────────────────▼─────────────────────────────────┐
-│              FastAPI API Server (api_server.py)          │
+│              FastAPI API Server (api_server.py)         │
 └───────────────────────┬─────────────────────────────────┘
                         │
 ┌───────────────────────▼─────────────────────────────────┐
-│           Multi-Agent Orchestrator Pipeline              │
+│           Multi-Agent Orchestrator Pipeline             │
 │                                                         │
-│  ① Triage Agent     → service, error type               │
-│  ②③ (parallel)                                          │
-│    Context Gatherer → logs, deployments, traces         │
-│    History Agent    → runbooks, past incidents          │
-│  ④ Analyst Agent    → root cause + fix (w/ thinking)    │
+│  Triage Agent      → service, error type                │
+│  (parallel)                                             │
+│  Context Gatherer → logs, deployments, traces           │
+│  History Agent    → runbooks, past incidents            │
+│  Analyst Agent    → root cause + fix (w/ thinking)      │
 └───────────────────────┬─────────────────────────────────┘
                         │ tool_use
 ┌───────────────────────▼─────────────────────────────────┐
-│              claude-opus-4-6 (Anthropic API)             │
+│              claude-opus-4-6 (Anthropic API)            │
 └─────────────────────────────────────────────────────────┘
 
 Separately:
 ┌─────────────────────────────────────────────────────────┐
-│        MCP Server (mcp_server/server.py)                 │
-│  Exposes 6 tools via stdio — connects to Claude Desktop  │
+│        MCP Server (mcp_server/server.py)                │
+│  Exposes 6 tools via stdio — connects to Claude Desktop │
 └─────────────────────────────────────────────────────────┘
 ```
 
