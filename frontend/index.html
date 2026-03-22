@@ -1199,6 +1199,31 @@
       </div>`;
       fixGrid.innerHTML += preventHtml;
     }
+    
+    // Culprit files
+    if (analysis.culprit_files && analysis.culprit_files.length) {
+      let culpritHtml = `<div class="result-card full-width">
+        <div class="rc-label">🔍 Culprit Files</div>`;
+      analysis.culprit_files.forEach(file => {
+        const lines = file.content.split('\n');
+        const highlightedContent = lines.map((line, idx) => {
+          const lineNum = idx + 1;
+          const isError = lineNum === file.error_line;
+          return `<div style="display:flex;gap:8px;${isError ? 'background:#3a1a1a;' : ''}">
+            <span style="color:var(--text-muted);min-width:30px;text-align:right">${lineNum}</span>
+            <span style="flex:1;${isError ? 'color:var(--error);font-weight:600;' : ''}">${escHtml(line)}</span>
+          </div>`;
+        }).join('');
+        culpritHtml += `
+          <div style="margin-top:12px">
+            <div style="font-size:12px;color:var(--accent);margin-bottom:6px">📄 ${escHtml(file.file_path)}</div>
+            <div style="font-size:11px;color:var(--warn);margin-bottom:8px">⚠️ Line ${file.error_line}: ${escHtml(file.error_reason)}</div>
+            <pre class="code-fix" style="max-height:300px;overflow-y:auto">${highlightedContent}</pre>
+          </div>`;
+      });
+      culpritHtml += `</div>`;
+      fixGrid.innerHTML += culpritHtml;
+    }
 
     // ETA + escalation
     fixGrid.innerHTML += `
@@ -1295,6 +1320,7 @@
       document.getElementById('ethicalDisclaimer').style.display = 'block';
     } else {
       // Engineer disagrees with diagnosis
+      console.log('[DEBUG] Something looks different clicked - showing escalation modal');
       const action = confirm(
         '🤔 Diagnosis doesn\'t match your observations?\n\n' +
         'Choose an action:\n\n' +
@@ -1408,18 +1434,7 @@
     }
   }
 
-  function confirmRCA(yes) {
-    const confirmGate = document.getElementById('confirmGate');
-    if (yes) {
-      confirmGate.style.display = 'none';
-      confirmGate.setAttribute('data-confirmed', 'true');
-      document.getElementById('fixSection').style.display = 'block';
-      document.getElementById('ethicalDisclaimer').style.display = 'block';
-    } else {
-      document.getElementById('feedbackArea').style.display = 'block';
-      document.getElementById('feedbackText').focus();
-    }
-  }
+
 
   function selectExplainMode(mode) {
     const tabs = document.querySelectorAll('.explain-tab');
