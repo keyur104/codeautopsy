@@ -19,7 +19,7 @@
       --error: #ff7b72;
       --thinking: #a371f7;
       --badge-bg: #1f2d3d;
-      --code-bg: #0d1117;
+      --code-bg: #161b22;
       --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
       --mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
     }
@@ -525,7 +525,131 @@
     .step-msg strong { color: var(--accent); font-weight: 700; }
 
     #elapsedDisplay { font-size: 12px; color: var(--text-muted); margin-top: 12px; }
+
+    /* ── File View Styles ── */
+    .file-view-container {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 16px;
+      grid-column: 1 / -1;
+    }
+    .file-tabs {
+      display: flex;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .file-tab {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-family: var(--mono);
+      color: var(--text-muted);
+      cursor: pointer;
+      border-right: 1px solid var(--border);
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+    }
+    .file-tab.active {
+      color: var(--accent);
+      border-bottom: 2px solid var(--accent);
+      background: var(--surface);
+    }
+    .file-content-wrapper {
+      position: relative;
+      background: var(--code-bg);
+      margin: 0;
+      overflow: auto;
+      max-height: 500px;
+    }
+    pre[class*="language-"] {
+      background: var(--code-bg) !important;
+      margin: 0 !important;
+      padding: 16px !important;
+      font-family: var(--mono) !important;
+      font-size: 13px !important;
+      text-shadow: none !important;
+    }
+    code[class*="language-"], pre[class*="language-"] {
+      color: var(--text) !important;
+      text-shadow: none !important;
+    }
+    .error-line {
+      position: relative;
+      background: rgba(255, 123, 114, 0.15); /* --error color with opacity */
+      display: block;
+      width: 100%;
+    }
+    .error-tooltip {
+      display: none;
+      position: absolute;
+      background: var(--error);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--font);
+      z-index: 10;
+      bottom: 100%;
+      left: 30px;
+      margin-bottom: 6px;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      font-weight: 600;
+    }
+    .error-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 10px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: var(--error) transparent transparent transparent;
+    }
+    .error-line:hover .error-tooltip {
+      display: block;
+    }
+
+    /* Override Prism colors slightly for light mode */
+    body.light code[class*="language-"], body.light pre[class*="language-"] {
+      color: #333 !important;
+    }
+
+    /* Prism Line Highlight Overrides */
+    .line-highlight {
+      background: rgba(255, 123, 114, 0.15) !important; /* Theme error color */
+      pointer-events: auto !important; /* Allow hover */
+      margin-top: 16px; /* offset for pre padding */
+    }
+    .line-highlight::before, .line-highlight[data-end]::after {
+      display: none; /* hide default prism line numbers blocks */
+    }
+    .line-highlight:hover .error-tooltip {
+      display: block;
+    }
+
+    /* Phase Progress Bars */
+    .result-card[id^="phase-"] {
+      position: relative;
+      overflow: hidden;
+      background: transparent !important; /* we use the inner div for background */
+    }
+    .phase-progress {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      width: 0%;
+      background: var(--badge-bg);
+      z-index: 0;
+    }
+    .result-card[id^="phase-"] > span, .result-card[id^="phase-"] > br {
+      position: relative;
+      z-index: 1; /* keep text readable over the background */
+    }
   </style>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-highlight/prism-line-highlight.min.css" rel="stylesheet" />
 </head>
 <body>
 
@@ -615,7 +739,11 @@
 
       <!-- Technical view (default) -->
       <div id="technicalView">
+        <!-- We'll keep resultGrid for just the Root Cause card + the toggle -->
         <div class="result-grid" id="resultGrid"></div>
+
+        <!-- The rest of the technical cards will go in here so they can be toggled -->
+        <div class="result-grid" id="techDetailsGrid" style="margin-top: 16px;"></div>
 
         <!-- Human confirmation gate -->
         <div class="result-grid" style="margin-top:16px">
@@ -661,10 +789,25 @@
         <div id="explainContent"></div>
       </div>
 
+      <!-- File View Container (shared by both views) -->
+      <button id="toggleFilesBtn" class="btn-demo" style="display:none; width: 100%; margin-top: 16px; font-weight: bold;"></button>
+      <div class="file-view-container" id="fileViewContainer">
+        <div class="file-tabs" id="fileTabs"></div>
+        <div class="file-content-wrapper" id="fileContentWrapper"></div>
+      </div>
+
     </div>
   </div>
 
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
 
 <script>
   const API_BASE = 'http://localhost:8000';
@@ -723,6 +866,7 @@
     document.getElementById('streamBody').innerHTML = '<div class="stream-placeholder" id="streamPlaceholder">Analysis events will stream here in real time…</div>';
     document.getElementById('resultPanel').style.display = 'none';
     document.getElementById('resultGrid').innerHTML = '';
+    document.getElementById('techDetailsGrid').innerHTML = '';
     document.getElementById('fixGrid').innerHTML = '';
     document.getElementById('confirmGate').style.display = 'none';
     document.getElementById('fixSection').style.display = 'none';
@@ -734,6 +878,8 @@
     document.getElementById('explainToggle').classList.remove('visible');
     document.getElementById('explainSection').style.display = 'none';
     document.getElementById('technicalView').style.display = '';
+    document.getElementById('fileViewContainer').style.display = 'none';
+    document.getElementById('toggleFilesBtn').style.display = 'none';
     setStatus('', '');
     document.getElementById('elapsedDisplay').textContent = '';
     resetPhaseCards();
@@ -773,7 +919,11 @@
   function resetPhaseCards() {
     ['triage','context','history','analysis'].forEach(p => {
       const el = document.getElementById(`phase-${p}`);
-      if (el) { el.style.borderColor = ''; el.style.background = ''; }
+      if (el) { 
+        el.style.borderColor = ''; 
+        let progress = el.querySelector('.phase-progress');
+        if (progress) progress.remove();
+      }
     });
   }
 
@@ -782,7 +932,27 @@
     const el = document.getElementById(`phase-${phase}`);
     if (el && colors[phase]) {
       el.style.borderColor = colors[phase];
-      el.style.background  = 'var(--badge-bg)';
+      let progress = el.querySelector('.phase-progress');
+      if (!progress) {
+          progress = document.createElement('div');
+          progress.className = 'phase-progress';
+          el.prepend(progress);
+      }
+      setTimeout(() => {
+          progress.style.transition = 'width 15s cubic-bezier(0.1, 0.8, 0.2, 1)';
+          progress.style.width = '90%';
+      }, 50);
+    }
+  }
+
+  function completePhase(phase) {
+    const el = document.getElementById(`phase-${phase}`);
+    if (el) {
+        let progress = el.querySelector('.phase-progress');
+        if (progress) {
+            progress.style.transition = 'width 0.3s ease-out';
+            progress.style.width = '100%';
+        }
     }
   }
 
@@ -826,7 +996,7 @@
       case 'tool_result':
         msg = `✅ <strong>${event.tool}</strong>: ${event.summary || 'OK'} <span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;color:var(--accent2);margin-left:6px">${toolSource(event.tool)}</span>`;
         break;
-      case 'agent_complete':   msg = `✓ <strong>${agent}</strong>: ${renderMd(event.summary || 'Done')}`; break;
+      case 'agent_complete':   msg = `✓ <strong>${agent}</strong>: ${renderMd(event.summary || 'Done')}`; completePhase(phase); break;
       case 'pipeline_complete':msg = `🏁 ${event.message} (${event.elapsed_seconds}s total)`; break;
       case 'error':            msg = `❌ ${event.message || 'Error'}`; break;
       default:                 msg = event.message || t;
@@ -864,13 +1034,16 @@
     currentAnalysis = analysis;
     const panel = document.getElementById('resultPanel');
     const grid  = document.getElementById('resultGrid');
+    const techGrid = document.getElementById('techDetailsGrid');
     panel.style.display = 'block';
     grid.innerHTML = '';
+    techGrid.innerHTML = '';
+    document.getElementById('fileViewContainer').style.display = 'none';
 
     const conf     = analysis.confidence_pct || 0;
     const escalate = analysis.escalation_needed;
 
-    // Root cause
+    // Root cause (Always top)
     grid.innerHTML += `
       <div class="result-card highlight full-width">
         <div class="rc-label">🎯 Root Cause</div>
@@ -880,9 +1053,32 @@
       </div>
     `;
 
+    // Add Toggle Button if culprit files exist
+    const toggleBtn = document.getElementById('toggleFilesBtn');
+    if (analysis.culprit_files && analysis.culprit_files.length > 0) {
+      toggleBtn.style.display = 'block';
+      toggleBtn.textContent = `📄 Show Culprit Files (${analysis.culprit_files.length})`;
+      
+      let fileViewInitialized = false;
+      toggleBtn.onclick = () => {
+         const container = document.getElementById('fileViewContainer');
+         const isVisible = container.style.display === 'block';
+         container.style.display = isVisible ? 'none' : 'block';
+         toggleBtn.textContent = isVisible ? `📄 Show Culprit Files (${analysis.culprit_files.length})` : '📄 Hide Culprit Files';
+         
+         // Only initialize Prism when the container is visibly opened
+         if (!isVisible && !fileViewInitialized) {
+            initFileView(analysis.culprit_files);
+            fileViewInitialized = true;
+         }
+      };
+    } else {
+      toggleBtn.style.display = 'none';
+    }
+
     // Contributing factors
     const factors = (analysis.contributing_factors || []).map(f => `<li>${escHtml(f)}</li>`).join('');
-    grid.innerHTML += `
+    techGrid.innerHTML += `
       <div class="result-card">
         <div class="rc-label">🔗 Contributing Factors</div>
         <ul class="factors-list">${factors}</ul>
@@ -891,7 +1087,7 @@
 
     // Analyst reasoning
     if (analysis.reasoning) {
-      grid.innerHTML += `
+      techGrid.innerHTML += `
         <div class="result-card full-width">
           <div class="rc-label">🧠 Analyst Reasoning</div>
           <div style="font-size:13px;color:var(--text-muted);line-height:1.6;white-space:pre-wrap">${escHtml(analysis.reasoning)}</div>
@@ -1018,19 +1214,116 @@
 
   // ── Explain It To Me ──────────────────────────────────────────────────────
 
-  function switchExplain(mode) {
+  function initFileView(files) {
+    const tabsContainer = document.getElementById('fileTabs');
+    const contentContainer = document.getElementById('fileContentWrapper');
+    tabsContainer.innerHTML = '';
+    contentContainer.innerHTML = '';
+
+    files.forEach((file, index) => {
+      // Tab
+      const tab = document.createElement('div');
+      tab.className = `file-tab ${index === 0 ? 'active' : ''}`;
+      const shortName = file.file_path.split('/').pop();
+      tab.textContent = shortName;
+      tab.onclick = () => {
+        document.querySelectorAll('.file-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        renderFileContent(file);
+      };
+      tabsContainer.appendChild(tab);
+
+      if (index === 0) {
+        renderFileContent(file);
+      }
+    });
+  }
+
+  function renderFileContent(file) {
+    const contentContainer = document.getElementById('fileContentWrapper');
+    contentContainer.innerHTML = '';
+
+    // Determine language based on extension
+    let ext = file.file_path.split('.').pop().toLowerCase();
+    let langClass = 'language-none';
+    if (ext === 'java') langClass = 'language-java';
+    else if (ext === 'py') langClass = 'language-python';
+    else if (ext === 'js') langClass = 'language-javascript';
+    else if (ext === 'ts') langClass = 'language-typescript';
+    else if (ext === 'sh' || ext === 'bash') langClass = 'language-bash';
+
+    // To add line highlighting we'll inject a custom pre/code block and position the tooltip
+    const pre = document.createElement('pre');
+    pre.className = langClass;
+    pre.style.position = 'relative'; // Restore position constraint for tooltip
+    if (file.error_line) {
+       pre.setAttribute('data-line', file.error_line);
+    }
+    const code = document.createElement('code');
+    code.className = langClass;
+    // Escaping the content so it's safe for innerHTML inside Prism
+    code.textContent = file.content;
+    pre.appendChild(code);
+    contentContainer.appendChild(pre);
+
+    // Run Prism
+    if (window.Prism) {
+      Prism.highlightElement(code);
+    }
+
+    // Now inject the tooltip if error_line exists, after line-highlight finishes
+    if (file.error_line) {
+        setTimeout(() => {
+          const lh = pre.querySelector('.line-highlight');
+          if (lh) {
+             if (file.error_reason) {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'error-tooltip';
+                tooltip.textContent = file.error_reason;
+                lh.appendChild(tooltip);
+             }
+             lh.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 150);
+    }
+  }
+
+  function confirmRCA(yes) {
+    const confirmGate = document.getElementById('confirmGate');
+    if (yes) {
+      confirmGate.style.display = 'none';
+      confirmGate.setAttribute('data-confirmed', 'true');
+      document.getElementById('fixSection').style.display = 'block';
+      document.getElementById('ethicalDisclaimer').style.display = 'block';
+    } else {
+      document.getElementById('feedbackArea').style.display = 'block';
+      document.getElementById('feedbackText').focus();
+    }
+  }
+
+  function selectExplainMode(mode) {
     const tabs = document.querySelectorAll('.explain-tab');
     tabs[0].classList.toggle('active', mode === 'technical');
     tabs[1].classList.toggle('active', mode === 'plain');
 
     if (mode === 'technical') {
-      document.getElementById('technicalView').style.display = '';
+      document.getElementById('techDetailsGrid').style.display = 'grid';
       document.getElementById('explainSection').style.display = 'none';
+      if (document.getElementById('confirmGate').getAttribute('data-confirmed') !== 'true') {
+         document.getElementById('confirmGate').style.display = 'block';
+      }
     } else {
-      document.getElementById('technicalView').style.display = 'none';
+      document.getElementById('techDetailsGrid').style.display = 'none';
+      document.getElementById('confirmGate').style.display = 'none';
+      document.getElementById('fixSection').style.display = 'none';
       document.getElementById('explainSection').style.display = 'block';
       loadSimplified();
     }
+  }
+
+  // Swap out the existing switchExplain to use our new one natively
+  function switchExplain(mode) {
+      selectExplainMode(mode);
   }
 
   async function loadSimplified() {
@@ -1078,8 +1371,10 @@
     document.getElementById('streamBody').innerHTML = '';
     document.getElementById('resultPanel').style.display = 'none';
     document.getElementById('resultGrid').innerHTML = '';
+    document.getElementById('techDetailsGrid').innerHTML = '';
     document.getElementById('fixGrid').innerHTML = '';
     document.getElementById('confirmGate').style.display = 'none';
+    document.getElementById('confirmGate').removeAttribute('data-confirmed');
     document.getElementById('fixSection').style.display = 'none';
     document.getElementById('ethicalDisclaimer').style.display = 'none';
     document.getElementById('sourcesUsed').style.display = 'none';
@@ -1089,6 +1384,9 @@
     document.getElementById('explainToggle').classList.remove('visible');
     document.getElementById('explainSection').style.display = 'none';
     document.getElementById('technicalView').style.display = '';
+    document.getElementById('techDetailsGrid').style.display = 'grid';
+    document.getElementById('fileViewContainer').style.display = 'none';
+    document.getElementById('toggleFilesBtn').style.display = 'none';
     document.getElementById('elapsedDisplay').textContent = '';
     thinkingEl      = null;
     technicalText   = '';
@@ -1152,5 +1450,16 @@
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') startAnalysis();
   });
 </script>
+
+<!-- PrismJS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-highlight/prism-line-highlight.min.js"></script>
+
 </body>
 </html>

@@ -423,7 +423,15 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
   "escalation_needed": true/false,
   "escalation_reason": "reason if escalation_needed is true, else null",
   "time_to_resolve_estimate_minutes": number,
-  "reasoning": "detailed multi-step reasoning explaining how you reached this conclusion"
+  "reasoning": "detailed multi-step reasoning explaining how you reached this conclusion",
+  "culprit_files": [
+    {
+      "file_path": "path/string.py",
+      "content": "Full simulated file content as a single string combining the code from the stack trace and surrounding context",
+      "error_line": 84,
+      "error_reason": "Short explanation of why this line threw the error"
+    }
+  ]
 }"""
 
     context_summary = {
@@ -493,6 +501,14 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
             "escalation_reason": None,
             "time_to_resolve_estimate_minutes": 10,
             "reasoning": "Parsed from context (JSON decode fallback)",
+            "culprit_files": [
+                {
+                    "file_path": "com/example/payment/client/InventoryClient.java",
+                    "content": "package com.example.payment.client;\n\npublic class InventoryClient {\n    private int timeout = 30000;\n\n    public boolean checkStock(String itemId) {\n        // Simulated HTTP call to inventory service\n        return httpClient.post(\"/stock\", itemId, this.timeout);\n    }\n}\n",
+                    "error_line": 8,
+                    "error_reason": "Timeout exceeded while waiting for inventory-service response"
+                }
+            ]
         }
 
     yield _event(agent_name, "result", data=analysis)
