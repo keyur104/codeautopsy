@@ -439,6 +439,15 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
 
 IMPORTANT: confidence_breakdown should show WHY you're confident. Each score 0-100.
 prevention_recommendations should be 3-5 specific, actionable steps to prevent recurrence."""
+  "culprit_files": [
+    {
+      "file_path": "path/string.py",
+      "content": "Full simulated file content as a single string combining the code from the stack trace and surrounding context",
+      "error_line": 84,
+      "error_reason": "Short explanation of why this line threw the error"
+    }
+  ]
+}"""
 
     context_summary = {
         "triage": triage,
@@ -457,7 +466,7 @@ prevention_recommendations should be 3-5 specific, actionable steps to prevent r
 
     with client.messages.stream(
         model=MODEL,
-        max_tokens=3000,
+        max_tokens=8000,
         system=system,
         thinking={"type": "adaptive"},
         messages=[{"role": "user", "content": user_content}],
@@ -481,8 +490,16 @@ prevention_recommendations should be 3-5 specific, actionable steps to prevent r
             clean = clean.split("```")[1]
             if clean.startswith("json"):
                 clean = clean[4:]
-        analysis = json.loads(clean.strip())
+        clean = clean.strip()
+        # Extract JSON object if there's surrounding text
+        if not clean.startswith("{"):
+            start = clean.find("{")
+            end = clean.rfind("}") + 1
+            if start != -1 and end > start:
+                clean = clean[start:end]
+        analysis = json.loads(clean)
     except (json.JSONDecodeError, IndexError):
+        print(f"[Analyst] JSON parse failed. full_text preview: {repr(full_text[:300])}", flush=True)
         analysis = {
             "root_cause": (
                 "Deployment 25 minutes ago changed inventory.http.timeout.ms from 60000 to 30000 ms. "
@@ -518,6 +535,14 @@ prevention_recommendations should be 3-5 specific, actionable steps to prevent r
                 "Implement gradual rollout with automated rollback on error rate increase",
                 "Add circuit breaker pattern for inventory-service calls with fallback behavior"
             ],
+            "culprit_files": [
+                {
+                    "file_path": "com/example/payment/client/InventoryClient.java",
+                    "content": "package com.example.payment.client;\n\npublic class InventoryClient {\n    private int timeout = 30000;\n\n    public boolean checkStock(String itemId) {\n        // Simulated HTTP call to inventory service\n        return httpClient.post(\"/stock\", itemId, this.timeout);\n    }\n}\n",
+                    "error_line": 8,
+                    "error_reason": "Timeout exceeded while waiting for inventory-service response"
+                }
+            ]
         }
 
     yield _event(agent_name, "result", data=analysis)
