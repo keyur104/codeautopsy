@@ -451,7 +451,7 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
 
     with client.messages.stream(
         model=MODEL,
-        max_tokens=3000,
+        max_tokens=8000,
         system=system,
         thinking={"type": "adaptive"},
         messages=[{"role": "user", "content": user_content}],
@@ -475,8 +475,16 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
             clean = clean.split("```")[1]
             if clean.startswith("json"):
                 clean = clean[4:]
-        analysis = json.loads(clean.strip())
+        clean = clean.strip()
+        # Extract JSON object if there's surrounding text
+        if not clean.startswith("{"):
+            start = clean.find("{")
+            end = clean.rfind("}") + 1
+            if start != -1 and end > start:
+                clean = clean[start:end]
+        analysis = json.loads(clean)
     except (json.JSONDecodeError, IndexError):
+        print(f"[Analyst] JSON parse failed. full_text preview: {repr(full_text[:300])}", flush=True)
         analysis = {
             "root_cause": (
                 "Deployment 25 minutes ago changed inventory.http.timeout.ms from 60000 to 30000 ms. "
