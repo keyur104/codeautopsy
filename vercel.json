@@ -1,0 +1,18 @@
+{
+  "builds": [
+    {
+      "src": "api_server.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(analyze|health|demo-alert|demo-scenarios|simplify|metrics)(.*)",
+      "destination": "/api_server.py"
+    },
+    {
+      "source": "/",
+      "destination": "/frontend/index.html"
+    }
+  ]
+}
