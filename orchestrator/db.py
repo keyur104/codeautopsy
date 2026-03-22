@@ -102,6 +102,12 @@ def find_cached_incident(service: str, error_type: str, min_confidence: int = 85
         if confidence < min_confidence:
             return None
 
+        # Don't serve cache entries missing culprit_files (pre-feature data)
+        analysis = d.get("analysis", {})
+        if not analysis.get("culprit_files"):
+            print(f"[Supabase] Cache entry missing culprit_files, skipping", flush=True)
+            return None
+
         print(f"[Supabase] Cache hit for {service}/{error_type} "
               f"(confidence={confidence}%, recorded={row['created_at'][:10]})", flush=True)
         return d.get("analysis", {})
