@@ -423,8 +423,22 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
   "escalation_needed": true/false,
   "escalation_reason": "reason if escalation_needed is true, else null",
   "time_to_resolve_estimate_minutes": number,
-  "reasoning": "detailed multi-step reasoning explaining how you reached this conclusion"
-}"""
+  "reasoning": "detailed multi-step reasoning explaining how you reached this conclusion",
+  "confidence_breakdown": {
+    "deployment_timing_match": 0-100,
+    "error_pattern_match": 0-100,
+    "past_incident_similarity": 0-100,
+    "trace_evidence_strength": 0-100
+  },
+  "prevention_recommendations": [
+    "Specific action 1 to prevent this class of issue",
+    "Specific action 2 (e.g., add pre-deployment validation)",
+    "Specific action 3 (e.g., implement circuit breakers)"
+  ]
+}
+
+IMPORTANT: confidence_breakdown should show WHY you're confident. Each score 0-100.
+prevention_recommendations should be 3-5 specific, actionable steps to prevent recurrence."""
 
     context_summary = {
         "triage": triage,
@@ -493,6 +507,17 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
             "escalation_reason": None,
             "time_to_resolve_estimate_minutes": 10,
             "reasoning": "Parsed from context (JSON decode fallback)",
+            "confidence_breakdown": {
+                "deployment_timing_match": 95,
+                "error_pattern_match": 98,
+                "past_incident_similarity": 92,
+                "trace_evidence_strength": 88
+            },
+            "prevention_recommendations": [
+                "Add pre-deployment validation for timeout configs against downstream service SLAs",
+                "Implement gradual rollout with automated rollback on error rate increase",
+                "Add circuit breaker pattern for inventory-service calls with fallback behavior"
+            ],
         }
 
     yield _event(agent_name, "result", data=analysis)

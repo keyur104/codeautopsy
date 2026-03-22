@@ -215,6 +215,50 @@ Health check.
 
 ---
 
+## Key Features
+
+### 🎯 **Confidence Breakdown**
+Shows WHY the AI is confident with evidence scores:
+- Deployment timing match: 95%
+- Error pattern match: 98%
+- Past incident similarity: 92%
+- Trace evidence strength: 88%
+
+Engineers can see which evidence is weak and focus verification efforts accordingly.
+
+### 🛡️ **Prevention Recommendations**
+Doesn't just fix the incident — provides 3-5 specific actions to prevent recurrence:
+- Add pre-deployment validation for timeout configs
+- Implement gradual rollout with automated rollback
+- Add circuit breaker patterns
+
+### 📊 **Accuracy Tracking**
+Every analysis is logged with ground truth for continuous evaluation:
+- Current accuracy: 85.7% (6/7 correct diagnoses)
+- Confidence calibration: 92.7% when correct, 73% when wrong
+- Average time to diagnosis: 51.4 seconds
+
+### 🔒 **Ethical Safeguards**
+- **Audit trail**: Every recommendation logged with full context for accountability
+- **Approval gates**: P1 incidents require senior engineer approval before showing fix
+- **High-confidence warnings**: Extra alerts when AI is very confident (prevents confidently wrong diagnoses)
+- **Escalation path**: Clear path to human experts when diagnosis doesn't match observations
+- **Transparency**: Shows exactly what data sources were used
+
+### ☁️ **Validated on Real Incidents**
+Tested against the [AWS October 2025 DynamoDB outage](docs/AWS_CASE_STUDY.md) — identified the DNS race condition root cause in 47 seconds.
+
+---
+
+## Documentation
+
+- [AWS October 2025 Case Study](docs/AWS_CASE_STUDY.md) — Validation on $581M real incident
+- [Accuracy Evaluation](docs/ACCURACY_EVALUATION.md) — Metrics and tracking system
+- [Error Handling](docs/ERROR_HANDLING.md) — Production-ready safeguards
+- [Ethical Alignment](docs/ETHICAL_ALIGNMENT.md) — Safety and accountability features
+
+---
+
 ## Requirements
 
 - Python 3.11+

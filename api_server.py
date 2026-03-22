@@ -30,6 +30,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 from orchestrator.orchestrator import run_analysis, DEMO_ALERT, DEMO_ALERTS
+from orchestrator.accuracy import get_accuracy_metrics
 
 app = FastAPI(
     title="CodeAutopsy",
@@ -167,6 +168,15 @@ async def simplify_analysis(request: SimplifyRequest):
         return {"simplified": response.content[0].text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/metrics/accuracy")
+async def get_accuracy():
+    """
+    Get accuracy metrics for the AI diagnostic system.
+    Shows how often the AI correctly identifies root causes.
+    """
+    return get_accuracy_metrics()
 
 
 if __name__ == "__main__":

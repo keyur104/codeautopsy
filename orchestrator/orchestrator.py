@@ -34,6 +34,8 @@ from orchestrator.agents import (
     analyst_agent,
 )
 from orchestrator.db import save_incident, query_incidents, find_cached_incident
+from orchestrator.accuracy import log_analysis
+from orchestrator.audit import log_recommendation
 
 load_dotenv()
 
@@ -45,7 +47,49 @@ def _get_client() -> anthropic.Anthropic:
             "ANTHROPIC_API_KEY environment variable not set. "
             "Create a .env file with: ANTHROPIC_API_KEY=your-key-here"
         )
-    return anthropic.Anthropic(api_key=api_key)
+    return anthropic.Anthropic(api_key=api_key, timeout=60.0)
+
+
+async def _safe_agent_call(agent_func, *args, agent_name: str, **kwargs):
+    """Wrap agent calls with error handling for API timeouts and failures."""
+    try:
+        async for event in agent_func(*args, **kwargs):
+            yield event
+    except anthropic.APITimeoutError as e:
+        yield {
+            "type": "error",
+            "message": f"{agent_name} timed out after 60s. Claude API may be overloaded.",
+            "error_type": "timeout",
+            "recoverable": True
+        }
+    except anthropic.APIConnectionError as e:
+        yield {
+            "type": "error",
+            "message": f"{agent_name} connection failed: {str(e)}",
+            "error_type": "connection",
+            "recoverable": True
+        }
+    except anthropic.RateLimitError as e:
+        yield {
+            "type": "error",
+            "message": f"{agent_name} rate limited. Wait and retry.",
+            "error_type": "rate_limit",
+            "recoverable": True
+        }
+    except anthropic.APIError as e:
+        yield {
+            "type": "error",
+            "message": f"{agent_name} API error: {str(e)}",
+            "error_type": "api_error",
+            "recoverable": False
+        }
+    except Exception as e:
+        yield {
+            "type": "error",
+            "message": f"{agent_name} unexpected error: {str(e)}",
+            "error_type": "unknown",
+            "recoverable": False
+        }
 
 
 async def _drain_agent(gen) -> tuple[list[dict], dict | None]:
@@ -99,7 +143,7 @@ async def run_analysis(
            "message": "Identifying affected service and error type…"}
 
     triage_result = None
-    async for event in triage_agent(alert_text, client):
+    async for event in _safe_agent_call(triage_agent, alert_text, client, agent_name="Triage Agent"):
         event["phase"] = "triage"
         if event.get("type") == "result":
             triage_result = event["data"]
@@ -119,6 +163,15 @@ async def run_analysis(
 
     if not triage_result:
         yield {"phase": "triage", "type": "error", "message": "Triage failed to identify service"}
+        return
+    
+    # Validate triage result has minimum required fields
+    if not triage_result.get("service_name"):
+        yield {
+            "phase": "triage",
+            "type": "error",
+            "message": "Triage did not identify a service name. Alert may be too vague."
+        }
         return
 
     # ------------------------------------------------------------------
@@ -155,8 +208,8 @@ async def run_analysis(
            "message": "Searching runbooks and past incidents in parallel…"}
 
     # Run context gatherer and history agent concurrently
-    context_gen = context_gatherer_agent(triage_result, client)
-    history_gen = history_agent(triage_result, client)
+    context_gen = _safe_agent_call(context_gatherer_agent, triage_result, client, agent_name="Context Gatherer")
+    history_gen = _safe_agent_call(history_agent, triage_result, client, agent_name="History Agent")
 
     context_task = asyncio.create_task(_drain_agent(context_gen))
     history_task = asyncio.create_task(_drain_agent(history_gen))
@@ -206,6 +259,14 @@ async def run_analysis(
 
     context_data = context_data or {}
     history_data = history_data or {}
+    
+    # Warn if critical data is missing
+    if not context_data.get("fetch_logs") and not context_data.get("get_recent_deployments"):
+        yield {
+            "phase": "context",
+            "type": "warning",
+            "message": "No logs or deployments found. Analysis may be incomplete."
+        }
 
     # ------------------------------------------------------------------
     # Phase 3: Analysis
@@ -218,15 +279,21 @@ async def run_analysis(
     }
 
     analysis_result = None
-    async for event in analyst_agent(
+    analysis_error = None
+    async for event in _safe_agent_call(
+        analyst_agent,
         triage=triage_result,
         context=context_data,
         history=history_data,
         alert_text=alert_text,
         client=client,
+        agent_name="Analyst Agent"
     ):
         event["phase"] = "analysis"
-        if event.get("type") == "result":
+        if event.get("type") == "error":
+            analysis_error = event.get("message")
+            yield event
+        elif event.get("type") == "result":
             analysis_result = event["data"]
             yield {
                 "phase": "analysis",
@@ -244,6 +311,17 @@ async def run_analysis(
     # ------------------------------------------------------------------
     # Final summary
     # ------------------------------------------------------------------
+    if not analysis_result and analysis_error:
+        yield {
+            "phase": "pipeline",
+            "type": "pipeline_failed",
+            "elapsed_seconds": round(time.time() - start_time, 1),
+            "message": f"Analysis failed: {analysis_error}",
+            "triage": triage_result,
+            "partial_data": {"context": context_data, "history": history_data}
+        }
+        return
+    
     elapsed = round(time.time() - start_time, 1)
 
     # Build data sources summary for ethical transparency
@@ -271,6 +349,34 @@ async def run_analysis(
         if inc:
             sources.append(f"{inc} past incident{'s' if inc != 1 else ''}")
 
+    # Log for accuracy tracking
+    try:
+        log_analysis(
+            service_name=triage_result.get("service_name", "unknown"),
+            error_type=triage_result.get("error_type", "unknown"),
+            ai_root_cause=analysis_result.get("root_cause", ""),
+            ai_confidence=analysis_result.get("confidence_pct", 0),
+            time_to_diagnosis_seconds=elapsed,
+        )
+    except Exception as e:
+        print(f"[Warning] Failed to log analysis: {e}", flush=True)
+    
+    # Log for audit trail (accountability)
+    try:
+        incident_id = log_recommendation(
+            incident_id="",
+            alert_text=alert_text,
+            triage_data=triage_result,
+            context_data=context_data,
+            history_data=history_data,
+            analysis_result=analysis_result,
+            elapsed_seconds=elapsed,
+            data_sources=sources,
+        )
+        print(f"[Audit] Logged recommendation: {incident_id}", flush=True)
+    except Exception as e:
+        print(f"[Warning] Failed to log audit trail: {e}", flush=True)
+    
     yield {
         "phase": "pipeline",
         "type": "pipeline_complete",
