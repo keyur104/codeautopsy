@@ -439,15 +439,6 @@ YOU MUST respond with a JSON object (no markdown fences) with these exact keys:
 
 IMPORTANT: confidence_breakdown should show WHY you're confident. Each score 0-100.
 prevention_recommendations should be 3-5 specific, actionable steps to prevent recurrence."""
-  "culprit_files": [
-    {
-      "file_path": "path/string.py",
-      "content": "Full simulated file content as a single string combining the code from the stack trace and surrounding context",
-      "error_line": 84,
-      "error_reason": "Short explanation of why this line threw the error"
-    }
-  ]
-}"""
 
     context_summary = {
         "triage": triage,
