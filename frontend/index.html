@@ -661,6 +661,9 @@
   </div>
   <div class="header-right">
     <div class="badge">claude-opus-4-6 · MCP</div>
+    <div class="badge" id="accuracyBadge" style="background:#1a3a1a;border-color:#2a5a2a;color:#7ee787;cursor:pointer" onclick="showAccuracyDetails()" title="Click for details">
+      📊 Accuracy: <span id="accuracyPct">--</span>%
+    </div>
     <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">☀️ Light</button>
   </div>
 </header>
@@ -768,9 +771,14 @@
         <div id="fixSection" style="margin-top:16px;display:none">
           <div class="result-grid" id="fixGrid"></div>
           <div class="ethical-disclaimer" id="ethicalDisclaimer">
-            ⚠ CodeAutopsy surfaces context to support your decision — not replace it.
-            Always verify the root cause matches your observations before applying any fix.
-            In high-severity incidents, escalate to a senior engineer.
+            ⚠ <strong>Critical Safety Warnings:</strong>
+            <ul style="margin:8px 0 0 20px;line-height:1.8;font-size:11px">
+              <li><strong>Verify before acting:</strong> AI can be confidently wrong. Always validate the root cause against your observations.</li>
+              <li><strong>Audit trail:</strong> This recommendation is logged. If applied, mark the outcome for accountability.</li>
+              <li><strong>AI limitations:</strong> Trained on public incidents. May not match your specific stack, frameworks, or architecture.</li>
+              <li><strong>High-severity incidents:</strong> Require senior engineer approval before applying AI recommendations.</li>
+              <li id="highConfidenceWarning" style="display:none;color:var(--error);font-weight:600">⚠️ HIGH CONFIDENCE + CRITICAL: Double-check this diagnosis. Confidently wrong AI can make incidents worse.</li>
+            </ul>
             <div id="sourcesUsed" class="sources-badge" style="display:none">
               📂 Sources used: <span id="sourcesText"></span>
             </div>
@@ -811,6 +819,45 @@
 
 <script>
   const API_BASE = 'http://localhost:8000';
+  
+  // Fetch accuracy metrics on load
+  async function loadAccuracyMetrics() {
+    try {
+      const res = await fetch(`${API_BASE}/metrics/accuracy`);
+      const metrics = await res.json();
+      if (metrics.accuracy !== null) {
+        document.getElementById('accuracyPct').textContent = metrics.accuracy;
+        document.getElementById('accuracyBadge').title = 
+          `Accuracy: ${metrics.accuracy}% (${metrics.correct_diagnoses}/${metrics.labeled_analyses} correct)\n` +
+          `Avg confidence: ${metrics.avg_confidence}%\n` +
+          `Avg time: ${metrics.avg_time_seconds}s`;
+      }
+    } catch (e) {
+      console.log('Could not load accuracy metrics:', e);
+    }
+  }
+  
+  function showAccuracyDetails() {
+    fetch(`${API_BASE}/metrics/accuracy`)
+      .then(r => r.json())
+      .then(m => {
+        alert(
+          `📊 CodeAutopsy Accuracy Metrics\n\n` +
+          `Total analyses: ${m.total_analyses}\n` +
+          `Labeled (with ground truth): ${m.labeled_analyses}\n` +
+          `Correct diagnoses: ${m.correct_diagnoses}\n` +
+          `Accuracy: ${m.accuracy}%\n\n` +
+          `Avg confidence: ${m.avg_confidence}%\n` +
+          `Avg time to diagnosis: ${m.avg_time_seconds}s\n\n` +
+          `Confidence when correct: ${m.confidence_when_correct}%\n` +
+          `Confidence when wrong: ${m.confidence_when_wrong}%\n\n` +
+          `Note: These metrics are from demo analyses with known ground truth.`
+        );
+      });
+  }
+  
+  // Load metrics on page load
+  window.addEventListener('DOMContentLoaded', loadAccuracyMetrics);
   let currentSource  = null;
   let startTime      = null;
   let elapsedTimer   = null;
@@ -998,7 +1045,16 @@
         break;
       case 'agent_complete':   msg = `✓ <strong>${agent}</strong>: ${renderMd(event.summary || 'Done')}`; completePhase(phase); break;
       case 'pipeline_complete':msg = `🏁 ${event.message} (${event.elapsed_seconds}s total)`; break;
-      case 'error':            msg = `❌ ${event.message || 'Error'}`; break;
+      case 'error':
+        const recoverable = event.recoverable ? ' <span style="color:var(--warn)">(Retrying...)</span>' : '';
+        msg = `❌ ${event.message || 'Error'}${recoverable}`;
+        break;
+      case 'warning':
+        msg = `⚠️ ${event.message || 'Warning'}`;
+        break;
+      case 'pipeline_failed':
+        msg = `❌ <strong>Pipeline Failed:</strong> ${event.message}`;
+        break;
       default:                 msg = event.message || t;
     }
 
@@ -1050,6 +1106,16 @@
         <div class="rc-value">${escHtml(analysis.root_cause || 'Unknown')}</div>
         <div class="confidence-bar"><div class="confidence-fill" id="confFill" style="width:0%"></div></div>
         <div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Confidence: <strong style="color:var(--accent2)">${conf}%</strong></div>
+        ${analysis.confidence_breakdown ? `
+          <details style="margin-top:10px;font-size:11px;color:var(--text-muted)">
+            <summary style="cursor:pointer;color:var(--accent)">📊 Confidence Breakdown</summary>
+            <div style="margin-top:8px;padding-left:12px">
+              ${Object.entries(analysis.confidence_breakdown).map(([key, val]) => 
+                `<div style="margin:4px 0">• ${key.replace(/_/g, ' ')}: <strong style="color:var(--accent2)">${val}%</strong></div>`
+              ).join('')}
+            </div>
+          </details>
+        ` : ''}
       </div>
     `;
 
@@ -1122,6 +1188,17 @@
     }
     refHtml += `</div>`;
     fixGrid.innerHTML += refHtml;
+    
+    // Prevention recommendations
+    if (analysis.prevention_recommendations && analysis.prevention_recommendations.length) {
+      let preventHtml = `<div class="result-card full-width">
+        <div class="rc-label">🛡️ Prevention Recommendations</div>
+        <ul style="margin:8px 0 0 20px;line-height:1.8;font-size:12px;color:var(--text)">
+          ${analysis.prevention_recommendations.map(rec => `<li>${escHtml(rec)}</li>`).join('')}
+        </ul>
+      </div>`;
+      fixGrid.innerHTML += preventHtml;
+    }
 
     // ETA + escalation
     fixGrid.innerHTML += `
@@ -1138,6 +1215,11 @@
 
     // Show confirmation gate
     document.getElementById('confirmGate').style.display = 'block';
+    
+    // High-confidence warning for critical incidents
+    if (conf >= 90 && escalate) {
+      document.getElementById('highConfidenceWarning').style.display = 'list-item';
+    }
 
     // Confidence-gated button
     const btnConfirm = document.getElementById('btnConfirm');
@@ -1191,12 +1273,50 @@
 
   function confirmRCA(yes) {
     if (yes) {
+      // Check if escalation is needed (P1/critical incident)
+      const escalationNeeded = currentAnalysis?.escalation_needed;
+      if (escalationNeeded) {
+        const approved = confirm(
+          '⚠️ ESCALATION REQUIRED\n\n' +
+          'This is a high-severity incident. AI recommendations for P1 incidents ' +
+          'require senior engineer approval.\n\n' +
+          'Has a senior engineer reviewed and approved this diagnosis?\n\n' +
+          'Click OK to confirm approval, or Cancel to escalate first.'
+        );
+        if (!approved) {
+          alert('Please escalate to a senior engineer before proceeding.\n\n' +
+                'This is a safety mechanism to prevent over-reliance on AI for critical incidents.');
+          return;
+        }
+      }
+      
       document.getElementById('confirmGate').style.display = 'none';
       document.getElementById('fixSection').style.display = 'block';
       document.getElementById('ethicalDisclaimer').style.display = 'block';
     } else {
-      document.getElementById('feedbackArea').style.display = 'block';
-      document.getElementById('feedbackText').focus();
+      // Engineer disagrees with diagnosis
+      const action = confirm(
+        '🤔 Diagnosis doesn\'t match your observations?\n\n' +
+        'Choose an action:\n\n' +
+        'OK = Escalate to senior engineer (recommended)\n' +
+        'Cancel = Provide feedback and re-analyze'
+      );
+      
+      if (action) {
+        // Escalate
+        alert(
+          '📞 Escalation Initiated\n\n' +
+          'Action: Contact senior engineer or on-call lead\n' +
+          'Provide: Original alert + AI diagnosis + your observations\n\n' +
+          'The AI\'s recommendation has been logged for review.\n' +
+          'Incident ID: ' + (currentAnalysis?.incident_id || 'N/A')
+        );
+        // In production: would create escalation ticket, page senior engineer
+      } else {
+        // Provide feedback
+        document.getElementById('feedbackArea').style.display = 'block';
+        document.getElementById('feedbackText').focus();
+      }
     }
   }
 
@@ -1435,7 +1555,16 @@
               setStatus('success', `✅ Analysis complete in ${event.elapsed_seconds}s`);
               document.getElementById('elapsedDisplay').textContent = `⏱ Completed in ${event.elapsed_seconds}s`;
             }
-            if (event.type === 'error') { setAnalyzing(false); setStatus('error', `❌ ${event.message || 'Analysis failed'}`); }
+            if (event.type === 'error') {
+              if (!event.recoverable) {
+                setAnalyzing(false);
+                setStatus('error', `❌ ${event.message || 'Analysis failed'}`);
+              }
+            }
+            if (event.type === 'pipeline_failed') {
+              setAnalyzing(false);
+              setStatus('error', `❌ Analysis failed: ${event.message}`);
+            }
           } catch {}
         }
       }
